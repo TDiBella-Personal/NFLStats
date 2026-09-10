@@ -1,6 +1,6 @@
 # NFLStats
 
-Green-phosphor NFL comparison matrix on GitHub Pages. Free data from nflverse, refreshed daily by a GitHub Action.
+NFL comparison matrix on GitHub Pages. Entities across, stats down, splits on tap. Free data from nflverse, refreshed daily by a GitHub Action.
 
 ## Setup
 1. Create a **public** repo, push this.
@@ -9,14 +9,14 @@ Green-phosphor NFL comparison matrix on GitHub Pages. Free data from nflverse, r
 4. Open `https://tdibella-personal.github.io/NFLStats/`.
 
 ## Using it
-- Status line shows season, current week, data timestamp. Amber note means 2026 stats aren't published yet and last season is showing.
-- `players` / `teams` toggles the matrix type. Switching clears it.
-- Command line: type a player name, a team (`colts`, `IND`) for a roster, or `wk 3` in teams mode for that week's games. Tap a result to add a column.
-- Commands: `rm 2` removes column 2, `rm` removes the last, `clear`, `copy`, `teams`, `players`.
-- Tap a stat row to split it. Pick home/away, division, opp D, fav/dog, rest, roof. Brightest value in each row is the best.
-- Tap a column header to remove it.
-- The URL hash holds the matrix, so bookmark or share a comparison.
-- `copy json` puts the whole matrix, with splits, on the clipboard. Paste into Claude to dig.
+- Players / Teams switches the matrix type. Switching clears it.
+- Search box: a player name, or a team name to browse its roster. Position chips narrow the results. Tap a result to add a column.
+- Teams mode: pick a week and tap a game to add both teams.
+- Totals / Per game switches every cell at once. Records (W-L, ATS, overs) always show as records.
+- Tap a stat row to select it, then pick a split chip at the top. Sub-rows appear under the stat. Tap the chip again to collapse.
+- Bold white is the best value in each row. Lower-is-better stats (interceptions, points allowed) flip that.
+- The x on a column header removes it. The URL hash holds the matrix, so bookmark a comparison.
+- Copy JSON puts the matrix, with splits, on the clipboard for pasting into Claude.
 
 ## Data
 - `data/meta.json` season, current week, timestamp
