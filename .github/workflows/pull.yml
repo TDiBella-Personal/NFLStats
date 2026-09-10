@@ -1,0 +1,33 @@
+name: pull nfl data
+
+on:
+  schedule:
+    - cron: "0 9 * * *"     # 5am ET daily (9 UTC; 10 UTC once DST ends, close enough)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r scripts/requirements.txt
+      - run: python scripts/pull.py
+      - name: commit if changed
+        run: |
+          # ignore the timestamp line so we only commit real data changes
+          git add data
+          if git diff --cached --quiet -I '"updated":' ; then
+            echo "no data changes"
+            git reset -q
+          else
+            git config user.name "nfl-dash bot"
+            git config user.email "bot@users.noreply.github.com"
+            git commit -m "data: $(date -u +%Y-%m-%d)"
+            git push
+          fi
