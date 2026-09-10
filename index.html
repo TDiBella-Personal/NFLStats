@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>nfl matrix</title>
+<style>
+:root{
+  --bg:#000;
+  --hi:#5cf57a;
+  --fg:#8fd99c;
+  --dim:#2f8f45;
+  --rule:#173b21;
+  --rule2:#0d2314;
+  --amber:#f0b429;
+  --sel:#0b2a14;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--fg);height:100%}
+body{
+  font:15px/1.35 ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  -webkit-font-smoothing:antialiased;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow-x:hidden;
+}
+button,input{font:inherit;color:inherit;background:none;border:0}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:focus-visible,input:focus-visible,tr:focus-visible{outline:1px solid var(--hi);outline-offset:-1px}
+
+.status{
+  display:flex;gap:1.5ch;flex-wrap:wrap;align-items:baseline;
+  padding:10px 14px 6px;border-bottom:1px solid var(--rule);color:var(--dim);
+}
+.status b{color:var(--fg);font-weight:400}
+.status .warn{color:var(--amber)}
+.status .modes{margin-left:auto;display:flex;gap:0}
+.status .modes button{padding:0 1ch;color:var(--dim)}
+.status .modes button.on{color:var(--hi)}
+.status .modes button+button{border-left:1px solid var(--rule)}
+
+.cmd{position:relative;z-index:10;padding:10px 14px;border-bottom:1px solid var(--rule)}
+.cmd .line{display:flex;align-items:center;gap:1ch}
+.cmd .prompt{color:var(--hi)}
+.cmd input{flex:1;min-width:0;caret-color:var(--hi);color:var(--hi);text-transform:none}
+.cmd input::placeholder{color:var(--dim)}
+.cmd .caret{width:1ch;height:1.2em;background:var(--hi);animation:blink 1.1s steps(1) infinite}
+.cmd input:focus~.caret{display:none}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.cmd .caret{animation:none}}
+
+.sugg{
+  position:absolute;left:14px;right:14px;top:100%;z-index:5;
+  background:var(--bg);border:1px solid var(--dim);max-height:50vh;overflow:auto;display:none;
+}
+.sugg.open{display:block}
+.sugg button{display:flex;gap:2ch;width:100%;text-align:left;padding:7px 10px;border-bottom:1px solid var(--rule2)}
+.sugg button:last-child{border-bottom:0}
+.sugg button:hover,.sugg button.cur{background:var(--sel);color:var(--hi)}
+.sugg .k{color:var(--dim);min-width:8ch}
+.sugg .m{color:var(--dim);margin-left:auto}
+.sugg .hint{padding:7px 10px;color:var(--dim)}
+
+.wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;min-width:100%;white-space:nowrap}
+th,td{padding:3px 10px;border:1px solid var(--rule);vertical-align:top;text-align:right}
+th{position:sticky;top:0;background:var(--bg);z-index:2;text-align:right;font-weight:400}
+th:first-child,td:first-child{
+  position:sticky;left:0;background:var(--bg);z-index:3;text-align:left;
+  min-width:15ch;color:var(--fg)
+}
+th:first-child{z-index:4}
+th .ent{display:block;color:var(--hi)}
+th .sub{display:block;color:var(--dim);font-size:.85em}
+th button{padding:0;text-align:right;width:100%}
+th button:hover .ent{color:var(--amber)}
+th button:hover .ent::after{content:"  x"}
+
+td .v{display:block}
+td .pg{display:block;color:var(--dim);font-size:.8em;line-height:1.2}
+td.best .v{color:var(--hi)}
+td.na{color:var(--rule)}
+
+tr.stat td:first-child{cursor:pointer}
+tr.stat.open td:first-child{color:var(--hi)}
+tr.stat.open td:first-child::before{content:"- "}
+tr.stat td:first-child::before{content:"+ ";color:var(--dim)}
+tr.stat.open td:first-child::before{color:var(--hi)}
+tr.fams td{padding:3px 10px;background:var(--sel)}
+tr.fams td:first-child{background:var(--sel)}
+tr.fams button{color:var(--dim);padding:2px 1ch 2px 0}
+tr.fams button.on{color:var(--hi)}
+tr.split td:first-child{color:var(--dim);padding-left:3ch}
+tr.split td{color:var(--fg)}
+tr.split td.best .v{color:var(--hi)}
+tr.hdr td{color:var(--dim);border-top:1px solid var(--dim)}
+tr.hdr td:first-child{color:var(--dim)}
+
+.empty{padding:28px 14px;color:var(--dim);max-width:70ch}
+.empty b{color:var(--fg);font-weight:400}
+.empty p+p{margin-top:.6em}
+.toast{
+  position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+  background:var(--bg);border:1px solid var(--hi);color:var(--hi);padding:6px 12px;display:none
+}
+.toast.on{display:block}
+.foot{padding:10px 14px;color:var(--dim);border-top:1px solid var(--rule);display:flex;gap:2ch;flex-wrap:wrap}
+.foot button{color:var(--dim)}
+.foot button:hover{color:var(--hi)}
+</style>
+</head>
+<body>
+
+<div class="status" id="status">
+  <span>loading</span>
+</div>
+
+<div class="cmd">
+  <div class="line">
+    <span class="prompt">&gt;</span>
+    <input id="cmd" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+           placeholder="player, team, wk 3, rm 2, clear, copy" aria-label="command">
+    <span class="caret" aria-hidden="true"></span>
+  </div>
+  <div class="sugg" id="sugg" role="listbox"></div>
+</div>
+
+<div class="wrap" id="matrix"></div>
+
+<div class="foot">
+  <button id="btnCopy">copy json</button>
+  <button id="btnClear">clear</button>
+  <span id="help">tap a stat to split it. tap a column to remove it.</span>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ---------------------------------------------------------------- config
+const DATA = 'data/';
+const MAX_COLS = 8;
+
+const TEAM_NAMES = {
+  ARI:'cardinals arizona', ATL:'falcons atlanta', BAL:'ravens baltimore', BUF:'bills buffalo',
+  CAR:'panthers carolina', CHI:'bears chicago', CIN:'bengals cincinnati', CLE:'browns cleveland',
+  DAL:'cowboys dallas', DEN:'broncos denver', DET:'lions detroit', GB:'packers green bay',
+  HOU:'texans houston', IND:'colts indianapolis indy', JAX:'jaguars jacksonville jags', KC:'chiefs kansas city',
+  LA:'rams los angeles la', LAC:'chargers los angeles', LV:'raiders las vegas', MIA:'dolphins miami',
+  MIN:'vikings minnesota', NE:'patriots new england', NO:'saints new orleans', NYG:'giants new york',
+  NYJ:'jets new york', PHI:'eagles philadelphia philly', PIT:'steelers pittsburgh', SEA:'seahawks seattle',
+  SF:'49ers niners san francisco', TB:'buccaneers bucs tampa bay', TEN:'titans tennessee', WAS:'commanders washington',
+};
+
+// split families: label -> keys
+const FAMS = [
+  {id:'ha',  label:'home/away', keys:[['home','home'],['away','away']]},
+  {id:'div', label:'division',  keys:[['div','in div'],['nondiv','non div']]},
+  {id:'opp', label:'opp D',     keys:[['opp_top','vs top-10 D'],['opp_mid','vs mid D'],['opp_bot','vs bot-10 D']]},
+  {id:'fav', label:'fav/dog',   keys:[['fav','favored'],['dog','underdog']]},
+  {id:'rest',label:'rest',      keys:[['rest_short','short rest'],['rest_norm','7 days'],['rest_long','long rest']]},
+  {id:'roof',label:'roof',      keys:[['dome','indoors'],['outdoor','outdoors']]},
+];
+
+// row config. fmt: int | d1 | d2 | pct | rec (t of g as W-L) | ratio (t already a ratio)
+// low: lower is better
+const ROWS = {
+  players: [
+    {key:'passing_yards', pos:'QB', label:'Pass yds',   fmt:'int'},
+    {key:'passing_tds', pos:'QB', label:'Pass TD',    fmt:'int'},
+    {key:'passing_interceptions', pos:'QB', label:'INT', fmt:'int', low:true},
+    {key:'completions', pos:'QB', label:'Comp',       fmt:'int'},
+    {key:'attempts', pos:'QB', label:'Att',        fmt:'int'},
+    {key:'passing_air_yards', pos:'QB', label:'Air yds',   fmt:'int'},
+    {key:'passing_epa', pos:'QB', label:'Pass EPA',   fmt:'d1'},
+    {key:'passing_cpoe', pos:'QB', label:'CPOE',       fmt:'d1', avg:true},
+    {key:'sacks_suffered', pos:'QB', label:'Sacked',     fmt:'int', low:true},
+    {key:'carries', pos:'QBRB', label:'Carries',    fmt:'int'},
+    {key:'rushing_yards', pos:'QBRB', label:'Rush yds',   fmt:'int'},
+    {key:'rushing_tds', pos:'QBRB', label:'Rush TD',    fmt:'int'},
+    {key:'rushing_first_downs', pos:'QBRB', label:'Rush 1D', fmt:'int'},
+    {key:'rushing_epa', pos:'QBRB', label:'Rush EPA',   fmt:'d1'},
+    {key:'targets', pos:'RBWRTE', label:'Targets',    fmt:'int'},
+    {key:'receptions', pos:'RBWRTE', label:'Rec',        fmt:'int'},
+    {key:'receiving_yards', pos:'RBWRTE', label:'Rec yds',    fmt:'int'},
+    {key:'receiving_tds', pos:'RBWRTE', label:'Rec TD',     fmt:'int'},
+    {key:'receiving_air_yards', pos:'RBWRTE', label:'Rec air yds',fmt:'int'},
+    {key:'receiving_yards_after_catch', pos:'RBWRTE', label:'YAC',fmt:'int'},
+    {key:'receiving_first_downs', pos:'RBWRTE', label:'Rec 1D',fmt:'int'},
+    {key:'receiving_epa', pos:'RBWRTE', label:'Rec EPA',    fmt:'d1'},
+    {key:'target_share', pos:'RBWRTE', label:'Target share',fmt:'pct', avg:true},
+    {key:'air_yards_share', pos:'RBWRTE', label:'Air yd share',fmt:'pct', avg:true},
+    {key:'wopr', pos:'RBWRTE', label:'WOPR',       fmt:'d2', avg:true},
+    {key:'fantasy_points_ppr',label:'PPR pts',  fmt:'d1'},
+  ],
+  teams: [
+    {key:'win',        label:'Record',      fmt:'rec'},
+    {key:'ats',        label:'ATS',         fmt:'rec'},
+    {key:'ou_over',    label:'Over/Under',  fmt:'rec', ou:true},
+    {key:'pf',         label:'Points for',  fmt:'int'},
+    {key:'pa',         label:'Points agst', fmt:'int', low:true},
+    {key:'margin',     label:'Margin',      fmt:'int'},
+    {key:'pf_vs_implied',label:'Pts vs implied',fmt:'d1'},
+    {key:'yards_per_play',label:'Yds/play', fmt:'ratio'},
+    {key:'total_yards',label:'Total yds',   fmt:'int'},
+    {key:'passing_yards',label:'Pass yds',  fmt:'int'},
+    {key:'rushing_yards',label:'Rush yds',  fmt:'int'},
+    {key:'plays',      label:'Plays',       fmt:'int'},
+    {key:'passing_epa',label:'Pass EPA',    fmt:'d1'},
+    {key:'rushing_epa',label:'Rush EPA',    fmt:'d1'},
+    {key:'to_margin',  label:'TO margin',   fmt:'int'},
+    {key:'giveaways',  label:'Giveaways',   fmt:'int', low:true},
+    {key:'takeaways',  label:'Takeaways',   fmt:'int'},
+    {key:'sacks_suffered',label:'Sacks allowed',fmt:'int', low:true},
+    {key:'def_sacks',  label:'Sacks',       fmt:'int'},
+    {key:'penalty_yards',label:'Pen yds',   fmt:'int', low:true},
+  ],
+};
+
+// ---------------------------------------------------------------- state
+const S = {
+  mode:'players',          // players | teams
+  cols:[],                 // entity ids
+  open:{},                 // statKey -> family id (or true for chooser open)
+  data:{},                 // meta, schedule, teams, players
+  cur:-1,                  // highlighted suggestion
+  sugg:[],
+};
+
+const $ = s => document.querySelector(s);
+const el = (tag, attrs={}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs)) {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v != null) e.setAttribute(k, v);
+  }
+  for (const k of kids) e.append(k);
+  return e;
+};
+
+// ---------------------------------------------------------------- load
+async function load() {
+  const [meta, schedule, teams, players] = await Promise.all(
+    ['meta','schedule','teams','players'].map(n => fetch(DATA + n + '.json', {cache:'no-cache'}).then(r => {
+      if (!r.ok) throw new Error(n + '.json ' + r.status);
+      return r.json();
+    }))
+  );
+  S.data = {meta, schedule, teams, players};
+  // per-team "this week" from schedule
+  S.next = {};
+  for (const g of (schedule[String(meta.current_week)] || [])) {
+    S.next[g.home] = {opp:g.away, at:'vs', spread:g.spread == null ? null : -g.spread, total:g.total, implied:g.home_implied, played:g.played};
+    S.next[g.away] = {opp:g.home, at:'@',  spread:g.spread, total:g.total, implied:g.away_implied, played:g.played};
+  }
+  readHash();
+  renderStatus();
+  render();
+}
+
+function renderStatus() {
+  const m = S.data.meta;
+  const d = new Date(m.updated);
+  const stamp = d.toLocaleString('en-US', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false, timeZone:'America/New_York'}).replace(',', '');
+  const st = $('#status');
+  st.replaceChildren(
+    el('span', {}, 'nfl ', el('b', {}, String(m.season))),
+    el('span', {}, 'wk ', el('b', {}, String(m.current_week))),
+    el('span', {}, 'data ', el('b', {}, stamp + ' et')),
+    m.note ? el('span', {class:'warn'}, m.note) : '',
+    el('span', {class:'modes'},
+      el('button', {class: S.mode==='players' ? 'on':'', onclick:()=>setMode('players')}, 'players'),
+      el('button', {class: S.mode==='teams' ? 'on':'', onclick:()=>setMode('teams')}, 'teams'),
+    ),
+  );
+}
+
+function setMode(m) {
+  if (m === S.mode) return;
+  S.mode = m; S.cols = []; S.open = {};
+  renderStatus(); render(); writeHash();
+}
+
+// ---------------------------------------------------------------- hash state
+function writeHash() {
+  const h = S.mode + ':' + S.cols.join(',');
+  history.replaceState(null, '', '#' + h);
+}
+function readHash() {
+  const h = location.hash.slice(1);
+  if (!h) return;
+  const [mode, ids] = h.split(':');
+  if (mode === 'players' || mode === 'teams') S.mode = mode;
+  const pool = S.data[S.mode];
+  S.cols = (ids || '').split(',').filter(id => pool[id]);
+}
+
+// ---------------------------------------------------------------- search
+function norm(s){ return s.toLowerCase().replace(/[^a-z0-9 ]/g,''); }
+
+function teamMatch(q) {
+  return Object.keys(TEAM_NAMES).filter(t => t.toLowerCase() === q || TEAM_NAMES[t].split(' ').some(w => w.startsWith(q)));
+}
+
+function search(raw) {
+  const q = norm(raw.trim());
+  if (!q) return [];
+  const out = [];
+
+  // wk N -> games (teams mode), or hint
+  const wk = q.match(/^wk?\s*(\d{1,2})$/);
+  if (wk) {
+    const games = S.data.schedule[wk[1]] || [];
+    if (S.mode !== 'teams') return [{hint:'switch to teams to add a matchup'}];
+    return games.map(g => ({
+      type:'game', id:g.id, ids:[g.away, g.home],
+      k: g.away + ' @ ' + g.home,
+      label: (g.spread == null ? '' : (g.spread > 0 ? g.home + ' -' + g.spread : g.away + ' -' + (-g.spread))) ,
+      meta: g.total == null ? '' : 'o/u ' + g.total,
+    }));
+  }
+
+  if (S.mode === 'teams') {
+    for (const t of teamMatch(q)) {
+      const tm = S.data.teams[t]; if (!tm) continue;
+      out.push({type:'team', id:t, k:t, label:TEAM_NAMES[t].split(' ')[0], meta: rec(tm.stats.win)});
+    }
+    return out.slice(0, 40);
+  }
+
+  // players: team query lists roster, else name match
+  const teams = teamMatch(q);
+  const P = Object.values(S.data.players);
+  let list;
+  if (teams.length === 1 && q.length >= 2) {
+    list = P.filter(p => p.team === teams[0]);
+    const order = {QB:0,RB:1,WR:2,TE:3};
+    list.sort((a,b) => order[a.pos]-order[b.pos] || (b.stats.fantasy_points_ppr?.t||0) - (a.stats.fantasy_points_ppr?.t||0));
+  } else {
+    const parts = q.split(' ');
+    list = P.filter(p => {
+      const n = norm(p.name) + ' ' + p.pos.toLowerCase() + ' ' + p.team.toLowerCase();
+      return parts.every(w => n.split(' ').some(tok => tok.startsWith(w)));
+    });
+    list.sort((a,b) => (b.stats.fantasy_points_ppr?.t||0) - (a.stats.fantasy_points_ppr?.t||0));
+  }
+  return list.slice(0, 40).map(p => ({type:'player', id:p.id, k:p.pos + ' ' + p.team, label:p.name, meta:p.games + ' gp'}));
+}
+
+function renderSugg() {
+  const box = $('#sugg');
+  box.replaceChildren();
+  if (!S.sugg.length) { box.classList.remove('open'); return; }
+  S.sugg.forEach((s, i) => {
+    if (s.hint) { box.append(el('div', {class:'hint'}, s.hint)); return; }
+    box.append(el('button', {class: i===S.cur ? 'cur':'', role:'option', onclick:()=>pick(s)},
+      el('span', {class:'k'}, s.k), el('span', {}, s.label), el('span', {class:'m'}, s.meta || '')));
+  });
+  box.classList.add('open');
+}
+
+function pick(s) {
+  const ids = s.ids || [s.id];
+  for (const id of ids) if (!S.cols.includes(id)) S.cols.push(id);
+  if (S.cols.length > MAX_COLS) { S.cols = S.cols.slice(-MAX_COLS); toast('max ' + MAX_COLS + ' columns'); }
+  $('#cmd').value = ''; S.sugg = []; S.cur = -1; renderSugg();
+  render(); writeHash();
+}
+
+// ---------------------------------------------------------------- commands
+function runCommand(raw) {
+  const q = raw.trim().toLowerCase();
+  if (!q) return true;
+  if (q === 'clear') { S.cols = []; S.open = {}; render(); writeHash(); return true; }
+  if (q === 'copy') { copyJson(); return true; }
+  if (q === 'teams' || q === 'players') { setMode(q); return true; }
+  const rm = q.match(/^rm\s+(\d+)$/);
+  if (rm) { const i = +rm[1]-1; if (S.cols[i]) { S.cols.splice(i,1); render(); writeHash(); } else toast('no column ' + rm[1]); return true; }
+  if (q === 'rm') { S.cols.pop(); render(); writeHash(); return true; }
+  return false;
+}
+
+const cmd = $('#cmd');
+cmd.addEventListener('input', () => { S.sugg = search(cmd.value); S.cur = S.sugg.length ? 0 : -1; renderSugg(); });
+cmd.addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' && S.sugg.length) { e.preventDefault(); S.cur = (S.cur+1) % S.sugg.length; renderSugg(); }
+  else if (e.key === 'ArrowUp' && S.sugg.length) { e.preventDefault(); S.cur = (S.cur-1+S.sugg.length) % S.sugg.length; renderSugg(); }
+  else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (runCommand(cmd.value)) { cmd.value=''; S.sugg=[]; renderSugg(); return; }
+    const s = S.sugg[S.cur]; if (s && !s.hint) pick(s);
+  }
+  else if (e.key === 'Escape') { cmd.value=''; S.sugg=[]; renderSugg(); }
+});
+cmd.addEventListener('blur', () => setTimeout(() => { S.sugg=[]; renderSugg(); }, 150));
+cmd.addEventListener('focus', () => { if (cmd.value) { S.sugg = search(cmd.value); renderSugg(); } });
+
+// ---------------------------------------------------------------- formatting
+function fmtVal(v, f) {
+  if (v == null || Number.isNaN(v)) return null;
+  switch (f) {
+    case 'int': return Math.round(v).toLocaleString();
+    case 'd1': return (Math.round(v*10)/10).toFixed(1);
+    case 'd2': return v.toFixed(2);
+    case 'pct': return (v*100).toFixed(1) + '%';
+    case 'ratio': return v.toFixed(2);
+    default: return String(v);
+  }
+}
+function rec(st, ou) {
+  if (!st || !st.g) return null;
+  const w = Math.floor(st.t), ties = Math.round((st.t - w) * 2), l = st.g - w - ties;
+  return ties ? `${w}-${l}-${ties}` : `${w}-${l}`;
+}
+function recPair(t, g) { return rec({t, g}); }
+
+function cellVals(row, st) {
+  // returns {main, sub} strings for a stat object {t,g}
+  if (!st || !st.g) return null;
+  if (row.fmt === 'rec') return {main: rec(st), sub: (st.t/st.g*100).toFixed(0) + '%', sort: st.t/st.g};
+  if (row.fmt === 'ratio') return {main: fmtVal(st.t, 'ratio'), sub: st.g + ' gp', sort: st.t};
+  const pg = st.t / st.g;
+  if (row.avg) return {main: fmtVal(pg, row.fmt), sub: st.g + ' gp', sort: pg};
+  return {main: fmtVal(st.t, row.fmt), sub: fmtVal(pg, row.fmt === 'int' ? 'd1' : row.fmt) + ' /g', sort: st.t};
+}
+
+// ---------------------------------------------------------------- matrix render
+function render() {
+  const wrap = $('#matrix');
+  const pool = S.data[S.mode];
+  const ents = S.cols.map(id => pool[id]).filter(Boolean);
+
+  if (!ents.length) {
+    wrap.replaceChildren(el('div', {class:'empty'},
+      el('p', {}, 'empty matrix. type a ', el('b', {}, S.mode === 'players' ? 'player or team' : 'team, or wk 3 for that week\'s games'), ' above and tap a result to add a column.'),
+      el('p', {}, 'add more to compare. tap any stat to split it by home/away, division, opponent defense, spread, rest, or roof.'),
+      el('p', {}, 'copy json pulls the whole matrix out for deeper digging elsewhere.'),
+    ));
+    return;
+  }
+
+  // header
+  const thead = el('thead');
+  const hr = el('tr');
+  hr.append(el('th', {}, ''));
+  ents.forEach((e, i) => {
+    const th = el('th');
+    const b = el('button', {onclick:()=>{ S.cols.splice(i,1); render(); writeHash(); }, title:'remove'});
+    if (S.mode === 'players') {
+      b.append(el('span', {class:'ent'}, e.name), el('span', {class:'sub'}, e.pos + ' ' + e.team + ' ' + e.games + 'gp'));
+    } else {
+      b.append(el('span', {class:'ent'}, e.id), el('span', {class:'sub'}, TEAM_NAMES[e.id].split(' ')[0] + ' ' + (rec(e.stats.win) || '0-0')));
+    }
+    th.append(b); hr.append(th);
+  });
+  thead.append(hr);
+
+  const tbody = el('tbody');
+
+  // this-week line (teams only)
+  if (S.mode === 'teams') {
+    const tr = el('tr', {class:'hdr'});
+    tr.append(el('td', {}, 'wk ' + S.data.meta.current_week));
+    ents.forEach(e => {
+      const n = S.next[e.id];
+      if (!n) { tr.append(el('td', {class:'na'}, 'bye')); return; }
+      const sp = n.spread == null ? '' : (n.spread > 0 ? '+' : '') + n.spread;
+      tr.append(el('td', {}, el('span', {class:'v'}, n.at + ' ' + n.opp + ' ' + sp), el('span', {class:'pg'}, n.total == null ? '' : 'o/u ' + n.total + '  imp ' + n.implied)));
+    });
+    tbody.append(tr);
+    // form
+    const tf = el('tr', {class:'hdr'});
+    tf.append(el('td', {}, 'last 5'));
+    ents.forEach(e => {
+      const f = e.form.slice(-5);
+      tf.append(el('td', {}, el('span', {class:'v'}, f.map(x => x.w).join('') || '-'), el('span', {class:'pg'}, 'ats ' + (f.map(x => x.ats || '-').join('')))));
+    });
+    tbody.append(tf);
+  }
+
+  // rows: only stats at least one entity has
+  const rows = visibleRows(ents);
+
+  for (const row of rows) {
+    const vals = ents.map(e => cellVals(row, getStat(e, row)));
+    tbody.append(statRow(row, row.label, vals, 'stat' + (S.open[row.key] ? ' open' : ''), () => toggle(row.key)));
+
+    const fam = S.open[row.key];
+    if (fam) {
+      // family chooser
+      const tr = el('tr', {class:'fams'});
+      const td = el('td', {colspan: ents.length + 1});
+      for (const f of FAMS) {
+        td.append(el('button', {class: fam === f.id ? 'on':'', onclick:()=>{ S.open[row.key] = f.id; render(); }}, f.label), ' ');
+      }
+      tr.append(td); tbody.append(tr);
+
+      const F = FAMS.find(f => f.id === fam);
+      if (F) for (const [k, lab] of F.keys) {
+        const sv = ents.map(e => {
+          const st = getStat(e, row); const s = st && st.s && st.s[k];
+          return s ? cellVals(row, {t: s[0], g: s[1]}) : null;
+        });
+        if (sv.every(v => !v)) continue;
+        tbody.append(statRow(row, lab, sv, 'split'));
+      }
+    }
+  }
+
+  const table = el('table');
+  table.append(thead, tbody);
+  wrap.replaceChildren(table);
+}
+
+// pruned zero-total stats come back as real zeros for on-position entities
+function getStat(e, row) {
+  const st = e.stats[row.key];
+  if (st) return st;
+  if (S.mode === 'teams' || !row.pos || row.pos.includes(e.pos)) return {t:0, g:e.games, s:{}};
+  return null;
+}
+
+function visibleRows(ents) {
+  return ROWS[S.mode].filter(r => ents.some(e => {
+    const st = e.stats[r.key]; if (!st) return false;
+    if (!r.pos) return true;
+    return r.pos.includes(e.pos);
+  }));
+}
+
+function statRow(row, label, vals, cls, onclick) {
+  const tr = el('tr', {class:cls});
+  const first = el('td', {}, label);
+  if (onclick) { first.addEventListener('click', onclick); tr.tabIndex = 0; tr.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); onclick(); } }); }
+  tr.append(first);
+  const nums = vals.map(v => v ? v.sort : null).filter(v => v != null);
+  const best = nums.length > 1 ? (row.low ? Math.min(...nums) : Math.max(...nums)) : null;
+  vals.forEach(v => {
+    if (!v) { tr.append(el('td', {class:'na'}, '--')); return; }
+    const td = el('td', {class: best != null && v.sort === best ? 'best' : ''});
+    td.append(el('span', {class:'v'}, v.main), v.sub ? el('span', {class:'pg'}, v.sub) : '');
+    tr.append(td);
+  });
+  return tr;
+}
+
+function toggle(key) {
+  if (S.open[key]) delete S.open[key]; else S.open[key] = 'ha';
+  render();
+}
+
+// ---------------------------------------------------------------- copy
+function copyJson() {
+  const pool = S.data[S.mode];
+  const ents = S.cols.map(id => pool[id]).filter(Boolean);
+  if (!ents.length) { toast('nothing to copy'); return; }
+  const rows = visibleRows(ents);
+  const out = {
+    season: S.data.meta.season, week: S.data.meta.current_week, mode: S.mode,
+    splits: Object.fromEntries(FAMS.flatMap(f => f.keys)),
+    entities: ents.map(e => ({
+      id: e.id, name: e.name || e.id, pos: e.pos, team: e.team, games: e.games,
+      next: S.mode === 'teams' ? S.next[e.id] : undefined,
+      stats: Object.fromEntries(rows.map(r => [r.key, getStat(e, r)]).filter(x => x[1])),
+    })),
+  };
+  const txt = JSON.stringify(out, null, 1);
+  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(
+    () => toast('copied ' + ents.length + ' columns'),
+    () => { const ta = el('textarea', {style:'position:fixed;opacity:0'}, txt); document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('copied'); }
+  );
+}
+
+let toastT;
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 1800);
+}
+
+$('#btnCopy').addEventListener('click', copyJson);
+$('#btnClear').addEventListener('click', () => { S.cols = []; S.open = {}; render(); writeHash(); });
+
+window.addEventListener('hashchange', () => { if (S.data.meta) { S.open = {}; readHash(); renderStatus(); render(); } });
+
+load().catch(e => {
+  $('#status').replaceChildren(el('span', {class:'warn'}, 'data missing: ' + e.message + '. run the pull workflow once.'));
+});
+</script>
+</body>
+</html>
