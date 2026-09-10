@@ -347,9 +347,9 @@ def main():
     teams = build_teams(tdf, ctx, tiers)
     players = build_players(pdf, ctx, tiers)
 
-    played_weeks = [w for w, gs in by_week.items() if any(g["played"] for g in gs)]
-    current_week = (max(played_weeks) + 1) if played_weeks else 1
-    current_week = min(current_week, max(by_week))
+    # current week = first week that still has an unplayed game
+    open_weeks = [w for w, gs in sorted(by_week.items()) if not all(g["played"] for g in gs)]
+    current_week = open_weeks[0] if open_weeks else max(by_week)
 
     meta = {
         "season": season,
