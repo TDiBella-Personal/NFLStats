@@ -34,6 +34,18 @@ import requests
 SCHEDULE_URL = "https://github.com/nflverse/nfldata/raw/master/data/games.csv"
 PLAYER_URL = "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_{season}.csv"
 TEAM_URL = "https://github.com/nflverse/nflverse-data/releases/download/stats_team/stats_team_week_{season}.csv"
+TEAMS_META_URL = "https://github.com/nflverse/nflverse-pbp/raw/master/teams_colors_logos.csv"
+NGS_URL = "https://github.com/nflverse/nflverse-data/releases/download/nextgen_stats/ngs_{kind}.csv.gz"
+
+# Next Gen Stats we keep, per file. All are per-game values from NGS; splits average them.
+NGS_COLS = {
+    "passing": ["avg_time_to_throw", "avg_intended_air_yards", "avg_completed_air_yards", "aggressiveness",
+                "avg_air_yards_to_sticks", "completion_percentage_above_expectation", "max_completed_air_distance"],
+    "rushing": ["efficiency", "percent_attempts_gte_eight_defenders", "avg_time_to_los",
+                "expected_rush_yards", "rush_yards_over_expected", "rush_yards_over_expected_per_att", "rush_pct_over_expected"],
+    "receiving": ["avg_cushion", "avg_separation", "avg_intended_air_yards", "percent_share_of_intended_air_yards",
+                  "avg_yac", "avg_expected_yac", "avg_yac_above_expectation"],
+}
 
 OUT_DIR = Path(os.environ.get("OUT_DIR", "data"))
 POSITIONS = {"QB", "RB", "WR", "TE"}
@@ -64,6 +76,9 @@ def fetch_csv(url: str) -> pd.DataFrame | None:
     if r.status_code == 404:
         return None
     r.raise_for_status()
+    if url.endswith(".gz"):
+        import gzip
+        return pd.read_csv(io.BytesIO(gzip.decompress(r.content)), low_memory=False)
     return pd.read_csv(io.StringIO(r.text), low_memory=False)
 
 
@@ -95,6 +110,7 @@ def build_schedule(games: pd.DataFrame):
             "week": wk,
             "date": g.gameday,
             "time": g.gametime if not pd.isna(g.gametime) else None,
+            "day": g.weekday if not pd.isna(g.weekday) else None,
             "away": g.away_team,
             "home": g.home_team,
             "spread": spread,
@@ -210,14 +226,42 @@ def agg_stats(rows: list[dict], stat_names: list[str], ctx: dict, tiers: dict) -
     return out
 
 
-def build_players(df: pd.DataFrame, ctx: dict, tiers: dict) -> dict:
+def load_ngs(season: int, ctx: dict) -> pd.DataFrame | None:
+    """Weekly NGS rows for the season, all three files merged, keyed by player_id + game_id."""
+    # (team, week) -> game_id so NGS rows can join the schedule context
+    tw = {(team, c["week"]): gid for (gid, team), c in ctx.items()}
+    frames = []
+    for kind, cols in NGS_COLS.items():
+        df = fetch_csv(NGS_URL.format(kind=kind))
+        if df is None:
+            continue
+        df = df[(df.season == season) & (df.season_type == "REG") & (df.week > 0)].copy()
+        if df.empty:
+            continue
+        df["game_id"] = [tw.get((t, int(w))) for t, w in zip(df.team_abbr, df.week)]
+        df = df[df.game_id.notna()]
+        keep = df[["player_gsis_id", "game_id"] + cols].rename(columns={c: "ngs_" + c for c in cols})
+        frames.append(keep.rename(columns={"player_gsis_id": "player_id"}))
+    if not frames:
+        return None
+    out = frames[0]
+    for f in frames[1:]:
+        out = out.merge(f, on=["player_id", "game_id"], how="outer")
+    return out
+
+
+def build_players(df: pd.DataFrame, ctx: dict, tiers: dict, ngs: pd.DataFrame | None) -> dict:
     df = df[df.season_type.eq("REG") & df.position.isin(POSITIONS)].copy()
+    if ngs is not None:
+        df = df.merge(ngs, on=["player_id", "game_id"], how="left")
+    ngs_cols = [c for c in df.columns if c.startswith("ngs_")]
     players = {}
     for pid, grp in df.groupby("player_id"):
         grp = grp.sort_values("week")
         last = grp.iloc[-1]
-        rows = grp[["game_id", "team"] + [c for c in PLAYER_STATS if c in grp.columns]].to_dict("records")
-        stats = agg_stats(rows, [c for c in PLAYER_STATS if c in grp.columns], ctx, tiers)
+        cols = [c for c in PLAYER_STATS if c in grp.columns] + ngs_cols
+        rows = grp[["game_id", "team"] + cols].to_dict("records")
+        stats = agg_stats(rows, cols, ctx, tiers)
         weekly = []
         for _, r in grp.iterrows():
             c = ctx.get((r.game_id, r.team), {})
@@ -244,6 +288,20 @@ def build_players(df: pd.DataFrame, ctx: dict, tiers: dict) -> dict:
             "weekly": weekly,
         }
     return players
+
+
+def team_meta() -> dict:
+    df = fetch_csv(TEAMS_META_URL)
+    out = {}
+    if df is None:
+        return out
+    for _, r in df.iterrows():
+        out[r.team_abbr] = {
+            "name": r.team_name, "nick": r.team_nick, "conf": r.team_conf, "div": r.team_division,
+            "color": r.team_color, "color2": r.team_color2,
+            "logo": r.team_logo_espn, "wordmark": r.team_wordmark,
+        }
+    return out
 
 
 def build_teams(tdf: pd.DataFrame, ctx: dict, tiers: dict) -> dict:
@@ -345,7 +403,16 @@ def main():
     by_week, ctx = build_schedule(games)
     tiers = defense_tiers(ctx)
     teams = build_teams(tdf, ctx, tiers)
-    players = build_players(pdf, ctx, tiers)
+    ngs = load_ngs(season, ctx)
+    players = build_players(pdf, ctx, tiers, ngs)
+    meta_teams = team_meta()
+    # every team gets a meta entry even before it has played
+    all_teams = {}
+    for abbr, m in meta_teams.items():
+        if abbr in ("LAR", "OAK", "SD", "STL"):
+            continue
+        all_teams[abbr] = {**m, **teams.get(abbr, {"id": abbr, "games": 0, "def_tier": None, "form": [], "stats": {}})}
+    teams = all_teams
 
     # current week = first week that still has an unplayed game
     open_weeks = [w for w, gs in sorted(by_week.items()) if not all(g["played"] for g in gs)]
@@ -359,6 +426,7 @@ def main():
         "weeks": sorted(by_week),
         "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "teams": sorted(teams),
+        "ngs": ngs is not None and not ngs.empty,
         "players_count": len(players),
         "splits": SPLIT_KEYS,
     }
